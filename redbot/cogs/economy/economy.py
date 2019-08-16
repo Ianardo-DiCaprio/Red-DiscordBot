@@ -222,6 +222,7 @@ class Economy(commands.Cog):
                 )
             else:
                 await bank.set_balance(to, creds.sum)
+                creds.sum = humanize.intcomma(creds.sum)
                 msg = _("{author} set {user}'s account balance to {num} {currency}.").format(
                     author=author.display_name,
                     num=creds.sum,
@@ -398,7 +399,7 @@ class Economy(commands.Cog):
         header = "{pound:{pound_len}}{score:{bal_len}}{name:2}\n".format(
             pound="#",
             name=_("Name"),
-            score=_("Score"),
+            score=_("Credits"),
             bal_len=bal_len + 6,
             pound_len=pound_len + 3,
         )
@@ -414,6 +415,7 @@ class Economy(commands.Cog):
                     user_id = f"({str(acc[0])})"
                 name = f"{acc[1]['name']} {user_id}"
             balance = acc[1]["balance"]
+            balance = humanize.intcomma(balance)
 
             if acc[0] != author.id:
                 temp_msg += f"{f'{pos}.': <{pound_len+2}} {balance: <{bal_len + 5}} {name}\n"
