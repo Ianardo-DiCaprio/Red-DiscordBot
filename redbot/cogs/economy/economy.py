@@ -518,12 +518,14 @@ class Economy(commands.Cog):
 
         if payout:
             then = await bank.get_balance(author)
+            then = humanize.intcomma(then)
             pay = payout["payout"](bid)
             now = then - bid + pay
             try:
                 await bank.set_balance(author, now)
             except errors.BalanceTooHigh as exc:
                 await bank.set_balance(author, exc.max_balance)
+                exc.max_balance = humanize.intcomma(exc.max_balance)
                 await channel.send(
                     _(
                         "You've reached the maximum amount of {currency}! "
@@ -538,8 +540,10 @@ class Economy(commands.Cog):
             phrase = T_(payout["phrase"])
         else:
             then = await bank.get_balance(author)
+            then = humanize.intcomma(then)
             await bank.withdraw_credits(author, bid)
             now = then - bid
+            now = humanize.intcomma(now)
             phrase = _("Nothing!")
         await channel.send(
             (
