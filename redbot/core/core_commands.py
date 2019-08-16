@@ -326,7 +326,7 @@ class Core(commands.Cog, CoreLogic):
         since = ctx.bot.uptime.strftime("%Y-%m-%d %H:%M:%S")
         delta = datetime.datetime.utcnow() - self.bot.uptime
         await ctx.send(
-            _("Been up for: **{}** (since {} UTC)").format(
+            _(":clock1: Been up for: **{}** (since {} UTC)").format(
                 humanize_timedelta(timedelta=delta), since
             )
         )
@@ -496,7 +496,7 @@ class Core(commands.Cog, CoreLogic):
     @checks.is_owner()
     async def leave(self, ctx: commands.Context):
         """Leaves server"""
-        await ctx.send(_("Are you sure you want me to leave this server? (y/n)"))
+        await ctx.send(_(":door: Are you sure you want me to leave this server? (y/n)"))
 
         pred = MessagePredicate.yes_or_no(ctx)
         try:
@@ -745,7 +745,7 @@ class Core(commands.Cog, CoreLogic):
         with by the process manager in use"""
         with contextlib.suppress(discord.HTTPException):
             if not silently:
-                await ctx.send(_("Restarting..."))
+                await ctx.send(_(":arrows_counterclockwise: Restarting..."))
         await ctx.bot.shutdown(restart=True)
 
     @commands.group(name="set")
