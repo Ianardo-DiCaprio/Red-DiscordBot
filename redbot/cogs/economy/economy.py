@@ -270,7 +270,7 @@ class Economy(commands.Cog):
                             "You currently have {new_balance} {currency}."
                         ).format(currency=credits_name, new_balance=exc.max_balance)
                     )
-                    embed = discord.Embed(title"Payday :moneybag:", description=description, color=0x8C05D2)
+                    embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
                     await ctx.send(embed=embed) 
                     return
                 next_payday = cur_time + await self.config.PAYDAY_TIME()
