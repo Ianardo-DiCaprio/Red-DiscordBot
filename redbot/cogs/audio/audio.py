@@ -396,7 +396,9 @@ class Audio(commands.Cog):
             player.store("prev_song", playing_song)
             player.store("prev_requester", requester)
             player.store("playing_song", player.current)
-            player.store("requester", player.current.requester)
+            player.store(
+                "requester", player.current.requester if player.current else player.current
+            )
             self.bot.dispatch(
                 "red_audio_track_start",
                 player.channel.guild,
@@ -864,7 +866,7 @@ class Audio(commands.Cog):
     ):
         """Set a playlist to auto-play songs from.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]audioset autopl playlist_name_OR_id args
 
         **Args**:
@@ -885,7 +887,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]audioset autopl MyGuildPlaylist
@@ -893,12 +895,12 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]audioset autopl PersonalPlaylist --scope User --author Draper
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
 
-        scope, author, guild = scope_data
+        scope, author, guild, specified_user = scope_data
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, scope, author, guild
+                ctx, playlist_matches, scope, author, guild, specified_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -907,7 +909,7 @@ class Audio(commands.Cog):
                 ctx, _("Could not match '{arg}' to a playlist").format(arg=playlist_arg)
             )
         try:
-            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author.id)
+            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author)
             tracks = playlist.tracks
             if not tracks:
                 return await self._embed_msg(
@@ -3072,6 +3074,7 @@ class Audio(commands.Cog):
         scope: str,
         author: discord.User,
         guild: discord.Guild,
+        specified_user: bool = False,
     ) -> Tuple[Optional[int], str]:
         """
         Parameters
@@ -3086,6 +3089,8 @@ class Audio(commands.Cog):
             The user.
         guild: discord.Guild
             The guild.
+        specified_user: bool
+            Whether or not a user ID was specified via argparse.
         Returns
         -------
         Tuple[Optional[int], str]
@@ -3110,16 +3115,30 @@ class Audio(commands.Cog):
                 if str(user_to_query) == i[0]
             ]
         elif scope == PlaylistScope.GUILD.value:
-            correct_scope_matches = [
-                (i[2]["id"], i[2]["name"], len(i[2]["tracks"]), i[2]["author"])
-                for i in correct_scope_matches
-                if str(guild_to_query) == i[0]
-            ]
+            if specified_user:
+                correct_scope_matches = [
+                    (i[2]["id"], i[2]["name"], len(i[2]["tracks"]), i[2]["author"])
+                    for i in correct_scope_matches
+                    if str(guild_to_query) == i[0] and i[2]["author"] == user_to_query
+                ]
+            else:
+                correct_scope_matches = [
+                    (i[2]["id"], i[2]["name"], len(i[2]["tracks"]), i[2]["author"])
+                    for i in correct_scope_matches
+                    if str(guild_to_query) == i[0]
+                ]
         else:
-            correct_scope_matches = [
-                (i[2]["id"], i[2]["name"], len(i[2]["tracks"]), i[2]["author"])
-                for i in correct_scope_matches
-            ]
+            if specified_user:
+                correct_scope_matches = [
+                    (i[2]["id"], i[2]["name"], len(i[2]["tracks"]), i[2]["author"])
+                    for i in correct_scope_matches
+                    if i[2]["author"] == user_to_query
+                ]
+            else:
+                correct_scope_matches = [
+                    (i[2]["id"], i[2]["name"], len(i[2]["tracks"]), i[2]["author"])
+                    for i in correct_scope_matches
+                ]
         match_count = len(correct_scope_matches)
         # We done all the trimming we can with the info available time to ask the user
         if match_count > 10:
@@ -3218,7 +3237,7 @@ class Audio(commands.Cog):
 
         The track(s) will be appended to the end of the playlist.
 
-        ***Usage**:*:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist append playlist_name_OR_id track_name_OR_url args
 
         **Args**:
@@ -3239,7 +3258,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist append MyGuildPlaylist Hello by Adele
@@ -3247,13 +3266,13 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist append MyGlobalPlaylist Hello by Adele --scope Global --Author Draper#6666
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
-        scope, author, guild = scope_data
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
+        scope, author, guild, specified_user = scope_data
         if not await self._playlist_check(ctx):
             return
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, scope, author, guild
+                ctx, playlist_matches, scope, author, guild, specified_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -3263,7 +3282,7 @@ class Audio(commands.Cog):
             )
 
         try:
-            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author.id)
+            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author)
         except RuntimeError:
             return await self._embed_msg(
                 ctx,
@@ -3347,7 +3366,7 @@ class Audio(commands.Cog):
 
         """Copy a playlist from one scope to another.
 
-        ***Usage**:*:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist copy playlist_name_OR_id args
 
         **Args**:
@@ -3372,7 +3391,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist copy MyGuildPlaylist --from-scope Guild --to-scope Global
@@ -3386,15 +3405,19 @@ class Audio(commands.Cog):
                 PlaylistScope.GUILD.value,
                 ctx.author,
                 ctx.guild,
+                False,
                 PlaylistScope.GUILD.value,
                 ctx.author,
                 ctx.guild,
+                False,
             ]
-        from_scope, from_author, from_guild, to_scope, to_author, to_guild = scope_data
+        from_scope, from_author, from_guild, specified_from_user, to_scope, to_author, to_guild, specified_to_user = (
+            scope_data
+        )
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, from_scope, from_author, from_guild
+                ctx, playlist_matches, from_scope, from_author, from_guild, specified_from_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -3466,7 +3489,7 @@ class Audio(commands.Cog):
     ):
         """Create an empty playlist.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist create playlist_name args
 
         **Args**:
@@ -3487,7 +3510,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist create MyGuildPlaylist
@@ -3495,8 +3518,8 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist create MyPersonalPlaylist --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
-        scope, author, guild = scope_data
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
+        scope, author, guild, specified_user = scope_data
 
         temp_playlist = FakePlaylist(author.id)
 
@@ -3527,7 +3550,7 @@ class Audio(commands.Cog):
     ):
         """Delete a saved playlist.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist delete playlist_name_OR_id args
 
         **Args**:
@@ -3548,7 +3571,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist delete MyGuildPlaylist
@@ -3556,12 +3579,12 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist delete MyPersonalPlaylist --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
-        scope, author, guild = scope_data
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
+        scope, author, guild, specified_user = scope_data
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, scope, author, guild
+                ctx, playlist_matches, scope, author, guild, specified_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -3571,7 +3594,7 @@ class Audio(commands.Cog):
             )
 
         try:
-            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author.id)
+            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author)
         except RuntimeError:
             return await self._embed_msg(
                 ctx,
@@ -3603,7 +3626,7 @@ class Audio(commands.Cog):
     ):
         """Remove duplicate tracks from a saved playlist.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist remdupes playlist_name_OR_id args
 
         **Args**:
@@ -3624,7 +3647,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist remdupes MyGuildPlaylist
@@ -3632,12 +3655,12 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist remdupes MyPersonalPlaylist --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
-        scope, author, guild = scope_data
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
+        scope, author, guild, specified_user = scope_data
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, scope, author, guild
+                ctx, playlist_matches, scope, author, guild, specified_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -3647,7 +3670,7 @@ class Audio(commands.Cog):
             )
 
         try:
-            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author.id)
+            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author)
         except RuntimeError:
             return await self._embed_msg(
                 ctx,
@@ -3723,7 +3746,7 @@ class Audio(commands.Cog):
         Red v2-compatible playlists can be generated by passing True
         for the v2 variable.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist download playlist_name_OR_id [v2=True_OR_False] args
 
         **Args**:
@@ -3744,7 +3767,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist download MyGuildPlaylist True
@@ -3752,12 +3775,12 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist download MyPersonalPlaylist --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
-        scope, author, guild = scope_data
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
+        scope, author, guild, specified_user = scope_data
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, scope, author, guild
+                ctx, playlist_matches, scope, author, guild, specified_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -3767,7 +3790,7 @@ class Audio(commands.Cog):
             )
 
         try:
-            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author.id)
+            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author)
         except RuntimeError:
             return await self._embed_msg(
                 ctx,
@@ -3832,7 +3855,7 @@ class Audio(commands.Cog):
     ):
         """Retrieve information from a saved playlist.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist info playlist_name_OR_id args
 
         **Args**:
@@ -3853,7 +3876,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist info MyGuildPlaylist
@@ -3861,12 +3884,12 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist info MyPersonalPlaylist --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
-        scope, author, guild = scope_data
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
+        scope, author, guild, specified_user = scope_data
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, scope, author, guild
+                ctx, playlist_matches, scope, author, guild, specified_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -3876,7 +3899,7 @@ class Audio(commands.Cog):
             )
 
         try:
-            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author.id)
+            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author)
         except RuntimeError:
             return await self._embed_msg(
                 ctx,
@@ -3944,7 +3967,7 @@ class Audio(commands.Cog):
     async def _playlist_list(self, ctx: commands.Context, *, scope_data: ScopeParser = None):
         """List saved playlists.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist list args
 
         **Args**:
@@ -3965,7 +3988,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist list
@@ -3973,11 +3996,11 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist list --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
-        scope, author, guild = scope_data
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
+        scope, author, guild, specified_user = scope_data
 
         try:
-            playlists = await get_all_playlist(scope, self.bot, guild, author.id)
+            playlists = await get_all_playlist(scope, self.bot, guild, author, specified_user)
         except MissingGuild:
             return await self._embed_msg(
                 ctx, _("You need to specify the Guild ID for the guild to lookup.")
@@ -3988,9 +4011,16 @@ class Audio(commands.Cog):
         elif scope == PlaylistScope.USER.value:
             name = f"{author}"
         else:
-            name = guild.me.display_name
+            name = "the global scope"
 
-        if not playlists:
+        if not playlists and specified_user:
+            return await self._embed_msg(
+                ctx,
+                _("No saved playlists for {scope} created by {author}.").format(
+                    scope=name, author=author
+                ),
+            )
+        elif not playlists:
             return await self._embed_msg(
                 ctx, _("No saved playlists for {scope}.").format(scope=name)
             )
@@ -4047,7 +4077,7 @@ class Audio(commands.Cog):
     ):
         """Save the queue to a playlist.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist queue playlist_name
 
         **Args**:
@@ -4068,7 +4098,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist queue MyGuildPlaylist
@@ -4076,9 +4106,9 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist queue MyPersonalPlaylist --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
 
-        scope, author, guild = scope_data
+        scope, author, guild, specified_user = scope_data
 
         temp_playlist = FakePlaylist(author.id)
         if not await self.can_manage_playlist(scope, temp_playlist, ctx, author, guild):
@@ -4125,7 +4155,7 @@ class Audio(commands.Cog):
     ):
         """Remove a track from a playlist by url.
 
-         ***Usage**:
+         **Usage**:
         ​ ​ ​ ​ [p]playlist remove playlist_name_OR_id url args
 
         **Args**:
@@ -4146,7 +4176,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist remove MyGuildPlaylist https://www.youtube.com/watch?v=MN3x-kAbgFU
@@ -4154,12 +4184,12 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist remove MyPersonalPlaylist https://www.youtube.com/watch?v=MN3x-kAbgFU --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
-        scope, author, guild = scope_data
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
+        scope, author, guild, specified_user = scope_data
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, scope, author, guild
+                ctx, playlist_matches, scope, author, guild, specified_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -4169,7 +4199,7 @@ class Audio(commands.Cog):
             )
 
         try:
-            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author.id)
+            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author)
         except RuntimeError:
             return await self._embed_msg(
                 ctx,
@@ -4223,7 +4253,7 @@ class Audio(commands.Cog):
     ):
         """Save a playlist from a url.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist save name url args
 
         **Args**:
@@ -4244,7 +4274,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist save MyGuildPlaylist https://www.youtube.com/playlist?list=PLx0sYbCqOb8Q_CLZC2BdBSKEEB59BOPUM
@@ -4252,8 +4282,8 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist save MyPersonalPlaylist https://open.spotify.com/playlist/1RyeIbyFeIJVnNzlGr5KkR --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
-        scope, author, guild = scope_data
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
+        scope, author, guild, specified_user = scope_data
 
         temp_playlist = FakePlaylist(author.id)
         if not await self.can_manage_playlist(scope, temp_playlist, ctx, author, guild):
@@ -4294,7 +4324,7 @@ class Audio(commands.Cog):
     ):
         """Load a playlist into the queue.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist start playlist_name_OR_id args
 
         **Args**:
@@ -4315,7 +4345,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist start MyGuildPlaylist
@@ -4323,9 +4353,9 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist start MyPersonalPlaylist --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
 
-        scope, author, guild = scope_data
+        scope, author, guild, specified_user = scope_data
         dj_enabled = await self.config.guild(ctx.guild).dj_enabled()
         if dj_enabled:
             if not await self._can_instaskip(ctx, ctx.author):
@@ -4334,7 +4364,7 @@ class Audio(commands.Cog):
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, scope, author, guild
+                ctx, playlist_matches, scope, author, guild, specified_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -4352,7 +4382,7 @@ class Audio(commands.Cog):
         author_obj = self.bot.get_user(ctx.author.id)
         track_len = 0
         try:
-            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author.id)
+            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author)
             player = lavalink.get_player(ctx.guild.id)
             tracks = playlist.tracks_obj
             empty_queue = not player.queue
@@ -4393,7 +4423,7 @@ class Audio(commands.Cog):
             elif scope == PlaylistScope.USER.value:
                 scope_name = f"{author}"
             else:
-                scope_name = guild.me.display_name
+                scope_name = "the global scope"
 
             embed = discord.Embed(
                 colour=await ctx.embed_colour(),
@@ -4437,7 +4467,7 @@ class Audio(commands.Cog):
     ):
         """Updates all tracks in a playlist.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist update playlist_name_OR_id args
 
         **Args**:
@@ -4458,7 +4488,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist update MyGuildPlaylist
@@ -4467,12 +4497,12 @@ class Audio(commands.Cog):
         """
 
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
 
-        scope, author, guild = scope_data
+        scope, author, guild, specified_user = scope_data
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, scope, author, guild
+                ctx, playlist_matches, scope, author, guild, specified_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -4485,7 +4515,7 @@ class Audio(commands.Cog):
         if not await self._playlist_check(ctx):
             return
         try:
-            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author.id)
+            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author)
             if playlist.url:
                 player = lavalink.get_player(ctx.guild.id)
                 added, removed, playlist = await self._maybe_update_playlist(ctx, player, playlist)
@@ -4567,7 +4597,7 @@ class Audio(commands.Cog):
         V2 and old V3 playlist will be slow.
         V3 Playlist made with [p]playlist download will load a lot faster.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist upload args
 
         **Args**:
@@ -4588,7 +4618,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist upload
@@ -4596,9 +4626,9 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist upload --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
 
-        scope, author, guild = scope_data
+        scope, author, guild, specified_user = scope_data
         temp_playlist = FakePlaylist(author.id)
         if not await self.can_manage_playlist(scope, temp_playlist, ctx, author, guild):
             return
@@ -4691,7 +4721,7 @@ class Audio(commands.Cog):
     ):
         """Rename an existing playlist.
 
-        ***Usage**:
+        **Usage**:
         ​ ​ ​ ​ [p]playlist rename playlist_name_OR_id new_name args
 
         **Args**:
@@ -4712,7 +4742,7 @@ class Audio(commands.Cog):
 
         Guild can be one of the following:
         ​ ​ ​ ​ Guild ID
-        ​ ​ ​ ​ Guild name
+        ​ ​ ​ ​ Exact guild name
 
         Example use:
         ​ ​ ​ ​ [p]playlist update MyGuildPlaylist RenamedGuildPlaylist
@@ -4720,9 +4750,9 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ [p]playlist update MyPersonalPlaylist RenamedPersonalPlaylist --scope User
         """
         if scope_data is None:
-            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild]
+            scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
 
-        scope, author, guild = scope_data
+        scope, author, guild, specified_user = scope_data
 
         new_name = new_name.split(" ")[0].strip('"')[:32]
         if new_name.isnumeric():
@@ -4736,7 +4766,7 @@ class Audio(commands.Cog):
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
-                ctx, playlist_matches, scope, author, guild
+                ctx, playlist_matches, scope, author, guild, specified_user
             )
         except TooManyMatches as e:
             return await self._embed_msg(ctx, str(e))
@@ -4746,7 +4776,7 @@ class Audio(commands.Cog):
             )
 
         try:
-            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author.id)
+            playlist = await get_playlist(playlist_id, scope, self.bot, guild, author)
         except RuntimeError:
             return await self._embed_msg(
                 ctx,
@@ -5180,7 +5210,7 @@ class Audio(commands.Cog):
             dur = lavalink.utils.format_time(player.current.length)
 
         if player.current.is_stream:
-            queue_list += _("**Currently livestreaming:**")
+            queue_list += _("**Currently livestreaming:**\n")
 
         elif any(
             x in player.current.uri for x in [f"{os.sep}localtracks", f"localtracks{os.sep}"]
@@ -6775,6 +6805,7 @@ class Audio(commands.Cog):
 
     def cog_unload(self):
         if not self._cleaned_up:
+            self.bot.dispatch("red_audio_unload", self)
             self.session.detach()
             self.bot.loop.create_task(self._close_database())
             if self._disconnect_task:
