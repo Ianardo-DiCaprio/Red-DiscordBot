@@ -540,10 +540,10 @@ class Economy(commands.Cog):
             phrase = T_(payout["phrase"])
         else:
             then = await bank.get_balance(author)
-            then = humanize.intcomma(then)
             await bank.withdraw_credits(author, bid)
             now = then - bid
             now = humanize.intcomma(now)
+            then = humanize.intcomma(then)
             phrase = _("Nothing!")
         await channel.send(
             (
