@@ -4,6 +4,7 @@ import random
 from collections import defaultdict, deque
 from enum import Enum
 from typing import cast, Iterable
+import humanize
 
 import discord
 
@@ -151,17 +152,24 @@ class Economy(commands.Cog):
         """Show the user's account balance.
 
         Defaults to yours."""
+        currency = await bank.get_currency_name(ctx.guild)
         if user is None:
             user = ctx.author
-
-        bal = await bank.get_balance(user)
-        currency = await bank.get_currency_name(ctx.guild)
-
-        await ctx.send(
-            _("{user}'s balance is {num} {currency}").format(
-                user=user.display_name, num=bal, currency=currency
+            bal = await bank.get_balance(user)
+            bal = humanize.intcomma(bal)
+            await ctx.send(
+                _("Your balance is currently {num} {currency}").format(
+                    num=bal, currency=currency
+                )
             )
-        )
+        else:
+            bal = await bank.get_balance(user)
+            bal = humanize.intcomma(bal)
+            await ctx.send(
+                _("{user}'s balance is {num} {currency}").format(
+                    user=user.display_name, num=bal, currency=currency
+                )
+            )
 
     @_bank.command()
     async def transfer(self, ctx: commands.Context, to: discord.Member, amount: int):
@@ -263,6 +271,7 @@ class Economy(commands.Cog):
                     await bank.deposit_credits(author, await self.config.PAYDAY_CREDITS())
                 except errors.BalanceTooHigh as exc:
                     await bank.set_balance(author, exc.max_balance)
+                    exc.max_balance = humanize.intcomma(exc.max_balance)
                     description = (
                         _(
                             "You've reached the maximum amount of {currency}!"
@@ -270,13 +279,15 @@ class Economy(commands.Cog):
                             "You currently have {new_balance} {currency}."
                         ).format(currency=credits_name, new_balance=exc.max_balance)
                     )
-                    embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
+                    embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
                     await ctx.send(embed=embed) 
                     return
                 next_payday = cur_time + await self.config.PAYDAY_TIME()
                 await self.config.user(author).next_payday.set(next_payday)
 
                 pos = await bank.get_leaderboard_position(author)
+                new_balance = await bank.get_balance(author)
+                new_balance = humanize.intcomma(new_balance)
                 description = (
                     _(
                         "{author.mention} Here, take some {currency}. "
@@ -286,12 +297,12 @@ class Economy(commands.Cog):
                         author=author,
                         currency=credits_name,
                         amount=await self.config.PAYDAY_CREDITS(),
-                        new_balance=await bank.get_balance(author),
+                        new_balance=new_balance
                     )
                 )
-                image = "https://spng.pngfind.com/pngs/s/3-37408_gold-coins-png-clipart-gold-coins-icon-png.png"
+                image = "https://tchol.org/images/coin-png-free-17.png"
                 footer = (_("You are currently #{pos} on the global leaderboard!").format(pos=pos))
-                embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
+                embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
                 embed.set_footer(text=footer)
                 embed.set_thumbnail(url=image)
                 await ctx.send(embed=embed)
@@ -302,7 +313,7 @@ class Economy(commands.Cog):
                         "{author.mention} Too soon. For your next payday you have to wait {time}."
                     ).format(author=author, time=dtime)
                 )
-                embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
+                embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
                 await ctx.send(embed=embed)
         else:
             next_payday = await self.config.member(author).next_payday()
@@ -318,6 +329,7 @@ class Economy(commands.Cog):
                     await bank.deposit_credits(author, credit_amount)
                 except errors.BalanceTooHigh as exc:
                     await bank.set_balance(author, exc.max_balance)
+                    exc.max_balance = humanize.intcomma(exc.max_balance)
                     description = (
                         _(
                             "You've reached the maximum amount of {currency}! "
@@ -325,12 +337,14 @@ class Economy(commands.Cog):
                             "You currently have {new_balance} {currency}."
                         ).format(currency=credits_name, new_balance=exc.max_balance)
                     )
-                    embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
+                    embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
                     await ctx.send(embed=embed)
                     return
                 next_payday = cur_time + await self.config.guild(guild).PAYDAY_TIME()
                 await self.config.member(author).next_payday.set(next_payday)
                 pos = await bank.get_leaderboard_position(author)
+                new_balance = await bank.get_balance(author)
+                new_balance = humanize.intcomma(new_balance)
                 description = (
                     _(
                         "{author.mention} Here, take some {currency}. "
@@ -340,12 +354,12 @@ class Economy(commands.Cog):
                         author=author,
                         currency=credits_name,
                         amount=credit_amount,
-                        new_balance=await bank.get_balance(author),
+                        new_balance=new_balance,
                     )
                 )
                 footer = (_("You are currently #{pos} on the global leaderboard!").format(pos=pos))
                 image = "https://spng.pngfind.com/pngs/s/3-37408_gold-coins-png-clipart-gold-coins-icon-png.png"
-                embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
+                embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
                 embed.set_footer(text=footer)
                 embed.set_thumbnail(url=image)
                 await ctx.send(embed=embed)
@@ -356,7 +370,8 @@ class Economy(commands.Cog):
                         "{author.mention} Too soon. For your next payday you have to wait {time}."
                     ).format(author=author, time=dtime)
                 )
-                embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
+                embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
+                await ctx.send(embed=embed)
 
     @commands.command()
     @guild_only_check()
