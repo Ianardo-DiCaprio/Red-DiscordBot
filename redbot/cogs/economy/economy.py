@@ -263,40 +263,47 @@ class Economy(commands.Cog):
                     await bank.deposit_credits(author, await self.config.PAYDAY_CREDITS())
                 except errors.BalanceTooHigh as exc:
                     await bank.set_balance(author, exc.max_balance)
-                    await ctx.send(
+                    description = (
                         _(
                             "You've reached the maximum amount of {currency}!"
                             "Please spend some more \N{GRIMACING FACE}\n\n"
                             "You currently have {new_balance} {currency}."
                         ).format(currency=credits_name, new_balance=exc.max_balance)
                     )
+                    embed = discord.Embed(title"Payday :moneybag:", description=description, color=0x8C05D2)
+                    await ctx.send(embed=embed) 
                     return
                 next_payday = cur_time + await self.config.PAYDAY_TIME()
                 await self.config.user(author).next_payday.set(next_payday)
 
                 pos = await bank.get_leaderboard_position(author)
-                await ctx.send(
+                description = (
                     _(
                         "{author.mention} Here, take some {currency}. "
                         "Enjoy! (+{amount} {currency}!)\n\n"
-                        "You currently have {new_balance} {currency}.\n\n"
-                        "You are currently #{pos} on the global leaderboard!"
+                        "You currently have {new_balance} {currency}."
                     ).format(
                         author=author,
                         currency=credits_name,
                         amount=await self.config.PAYDAY_CREDITS(),
                         new_balance=await bank.get_balance(author),
-                        pos=pos,
                     )
                 )
-
+                image = "https://spng.pngfind.com/pngs/s/3-37408_gold-coins-png-clipart-gold-coins-icon-png.png"
+                footer = (_("You are currently #{pos} on the global leaderboard!").format(pos=pos))
+                embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
+                embed.set_footer(text=footer)
+                embed.set_thumbnail(url=image)
+                await ctx.send(embed=embed)
             else:
                 dtime = self.display_time(next_payday - cur_time)
-                await ctx.send(
+                description = (
                     _(
                         "{author.mention} Too soon. For your next payday you have to wait {time}."
                     ).format(author=author, time=dtime)
                 )
+                embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
+                await ctx.send(embed=embed)
         else:
             next_payday = await self.config.member(author).next_payday()
             if cur_time >= next_payday:
@@ -311,42 +318,49 @@ class Economy(commands.Cog):
                     await bank.deposit_credits(author, credit_amount)
                 except errors.BalanceTooHigh as exc:
                     await bank.set_balance(author, exc.max_balance)
-                    await ctx.send(
+                    description = (
                         _(
                             "You've reached the maximum amount of {currency}! "
                             "Please spend some more \N{GRIMACING FACE}\n\n"
                             "You currently have {new_balance} {currency}."
                         ).format(currency=credits_name, new_balance=exc.max_balance)
                     )
+                    embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
+                    await ctx.send(embed=embed)
                     return
                 next_payday = cur_time + await self.config.guild(guild).PAYDAY_TIME()
                 await self.config.member(author).next_payday.set(next_payday)
                 pos = await bank.get_leaderboard_position(author)
-                await ctx.send(
+                description = (
                     _(
                         "{author.mention} Here, take some {currency}. "
                         "Enjoy! (+{amount} {currency}!)\n\n"
                         "You currently have {new_balance} {currency}.\n\n"
-                        "You are currently #{pos} on the global leaderboard!"
                     ).format(
                         author=author,
                         currency=credits_name,
                         amount=credit_amount,
                         new_balance=await bank.get_balance(author),
-                        pos=pos,
                     )
                 )
+                footer = (_("You are currently #{pos} on the global leaderboard!").format(pos=pos))
+                image = "https://spng.pngfind.com/pngs/s/3-37408_gold-coins-png-clipart-gold-coins-icon-png.png"
+                embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
+                embed.set_footer(text=footer)
+                embed.set_thumbnail(url=image)
+                await ctx.send(embed=embed)
             else:
                 dtime = self.display_time(next_payday - cur_time)
-                await ctx.send(
+                description = (
                     _(
                         "{author.mention} Too soon. For your next payday you have to wait {time}."
                     ).format(author=author, time=dtime)
                 )
+                embed = discord.Embed(title="Payday :moneybag:", description=description, color=0x8C05D2)
 
     @commands.command()
     @guild_only_check()
-    async def leaderboard(self, ctx: commands.Context, top: int = 10, show_global: bool = False):
+    async def leaderboard(self, ctx: commands.Context, top: int = 100, show_global: bool = False):
         """Print the leaderboard.
 
         Defaults to top 10.
