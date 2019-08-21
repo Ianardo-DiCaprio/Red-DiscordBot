@@ -412,6 +412,12 @@ class Audio(commands.Cog):
                 "red_audio_track_end", player.channel.guild, prev_song, prev_requester
             )
 
+        if event_type == lavalink.LavalinkEvents.QUEUE_END:
+            prev_song = player.fetch("prev_song")
+            prev_requester = player.fetch("prev_requester")
+            self.bot.dispatch(
+                "red_audio_queue_end", player.channel.guild, prev_song, prev_requester
+            )
             if autoplay and not player.queue and player.fetch("playing_song") is not None:
                 if self.owns_autoplay is None:
                     await self.music_cache.autoplay(player)
@@ -423,13 +429,6 @@ class Audio(commands.Cog):
                         player.channel,
                         self.play_query,
                     )
-
-        if event_type == lavalink.LavalinkEvents.QUEUE_END:
-            prev_song = player.fetch("prev_song")
-            prev_requester = player.fetch("prev_requester")
-            self.bot.dispatch(
-                "red_audio_queue_end", player.channel.guild, prev_song, prev_requester
-            )
 
         if event_type == lavalink.LavalinkEvents.TRACK_START and notify:
             notify_channel = player.fetch("channel")
@@ -1637,6 +1636,8 @@ class Audio(commands.Cog):
                 self.bot.dispatch("red_audio_audio_disconnect", ctx.guild)
                 self._play_lock(ctx, False)
                 eq = player.fetch("eq")
+                player.queue = []
+                player.store("playing_song", None)
                 if eq:
                     await self.config.custom("EQUALIZER", ctx.guild.id).eq_bands.set(eq.bands)
                 await player.stop()
@@ -2957,10 +2958,6 @@ class Audio(commands.Cog):
                         time=queue_total_duration, position=before_queue_length + 1
                     )
                 )
-            elif queue_dur > 0:
-                index = next((i for i, e in enumerate(player.queue) if e == single_track), None)
-                if index:
-                    embed.set_footer(text=_("#{position} in queue").format(position=index + 1))
 
         await ctx.send(embed=embed)
         if not player.current:
@@ -3473,7 +3470,7 @@ class Audio(commands.Cog):
         return await self._embed_msg(
             ctx,
             _(
-                "Playlist {name} ({from_id}) copied from {from_scope} to {to_scope} ({to_id})."
+                "Playlist {name} (`{from_id}`) copied from {from_scope} to {to_scope} (`{to_id}`)."
             ).format(
                 name=from_playlist.name,
                 from_id=from_playlist.id,
@@ -3616,7 +3613,7 @@ class Audio(commands.Cog):
             ctx, _("{name} (`{id}`) playlist deleted.").format(name=playlist.name, id=playlist.id)
         )
 
-    @playlist.command(name="remdupe", usage="<playlist_name_OR_id> [args]")
+    @playlist.command(name="dedupe", usage="<playlist_name_OR_id> [args]")
     async def _playlist_remdupe(
         self,
         ctx: commands.Context,
@@ -3627,7 +3624,7 @@ class Audio(commands.Cog):
         """Remove duplicate tracks from a saved playlist.
 
         **Usage**:
-        ​ ​ ​ ​ [p]playlist remdupes playlist_name_OR_id args
+        ​ ​ ​ ​ [p]playlist dedupe playlist_name_OR_id args
 
         **Args**:
         ​ ​ ​ ​ The following are all optional:
@@ -3650,9 +3647,9 @@ class Audio(commands.Cog):
         ​ ​ ​ ​ Exact guild name
 
         Example use:
-        ​ ​ ​ ​ [p]playlist remdupes MyGuildPlaylist
-        ​ ​ ​ ​ [p]playlist remdupes MyGlobalPlaylist --scope Global
-        ​ ​ ​ ​ [p]playlist remdupes MyPersonalPlaylist --scope User
+        ​ ​ ​ ​ [p]playlist dedupe MyGuildPlaylist
+        ​ ​ ​ ​ [p]playlist dedupe MyGlobalPlaylist --scope Global
+        ​ ​ ​ ​ [p]playlist dedupe MyPersonalPlaylist --scope User
         """
         if scope_data is None:
             scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
@@ -5211,6 +5208,9 @@ class Audio(commands.Cog):
 
         if player.current.is_stream:
             queue_list += _("**Currently livestreaming:**\n")
+            queue_list += "**[{current.title}]({current.uri})**\n".format(current=player.current)
+            queue_list += _("Requested by: **{user}**").format(user=player.current.requester)
+            queue_list += f"\n\n{arrow}`{pos}`/`{dur}`\n\n"
 
         elif any(
             x in player.current.uri for x in [f"{os.sep}localtracks", f"localtracks{os.sep}"]
@@ -5851,10 +5851,6 @@ class Audio(commands.Cog):
                     time=queue_total_duration, position=len(player.queue) + 1
                 )
             )
-        elif queue_dur > 0:
-            index = next((i for i, e in enumerate(player.queue) if e == search_choice), None)
-            if index:
-                embed.set_footer(text=_("#{position} in queue").format(position=index + 1))
 
         if not player.current:
             await player.play()
