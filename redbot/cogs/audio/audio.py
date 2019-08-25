@@ -440,8 +440,10 @@ class Audio(commands.Cog):
                         await player.fetch("notify_message").delete()
                     except discord.errors.NotFound:
                         pass
-                if player.current.extras.get("autoplay") and (
-                    prev_song is None or not prev_song.extras.get("autoplay")
+                if (
+                    autoplay
+                    and player.current.extras.get("autoplay")
+                    and (prev_song is None or not prev_song.extras.get("autoplay"))
                 ):
                     embed = discord.Embed(
                         colour=(await self._get_embed_colour(notify_channel)),
@@ -920,7 +922,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(scope)
+                    id=playlist_id, scope=humanize_scope(scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -930,8 +932,12 @@ class Audio(commands.Cog):
         else:
             return await self._embed_msg(
                 ctx,
-                _("Playlist {name} (`{id}`) will be used for autoplay.").format(
-                    name=playlist.name, id=playlist.id
+                _("Playlist {name} (`{id}`) [**{scope}**] will be used for autoplay.").format(
+                    name=playlist.name,
+                    id=playlist.id,
+                    scope=humanize_scope(
+                        scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+                    ),
                 ),
             )
 
@@ -1085,27 +1091,28 @@ class Audio(commands.Cog):
             except discord.errors.Forbidden:
                 pass
             return
-
-        try:
-            if os.getcwd() != local_path:
-                os.chdir(local_path)
-            os.listdir(local_path)
-        except OSError:
+        temp = dataclasses.LocalPath(local_path, forced=True)
+        if not temp.exists() or not temp.is_dir():
             return await self._embed_msg(
                 ctx,
                 _("{local_path} does not seem like a valid path.").format(local_path=local_path),
             )
 
-        temp = dataclasses.LocalPath(local_path)
         if not temp.localtrack_folder.exists():
             warn_msg = _(
-                "The path that was entered does not have localtracks folder in "
-                "that location. The path will still be saved, but please check the path and "
-                "create a localtracks in that location before attempting "
-                "to play local tracks or start your Lavalink.jar."
+                "`{localtracks}` does not exist. "
+                "The path will still be saved, but please check the path and "
+                "create a localtracks folder in `{localfolder}` before attempting "
+                "to play local tracks."
+            ).format(localfolder=temp.absolute(), localtracks=temp.localtrack_folder.absolute())
+            await ctx.send(
+                embed=discord.Embed(
+                    title=_("Incorrect environment."),
+                    description=warn_msg,
+                    colour=await ctx.embed_colour(),
+                )
             )
-            await self._embed_msg(ctx, warn_msg)
-
+        local_path = str(temp.localtrack_folder.absolute())
         await self.config.localpath.set(local_path)
         pass_config_to_dependencies(self.config, self.bot, local_path)
         await self._embed_msg(
@@ -1397,7 +1404,7 @@ class Audio(commands.Cog):
     async def _storage(self, ctx: commands.Context, *, level: int = None):
         """Sets the caching level.
 
-        Level can one of the following:
+        Level can be one of the following:
 
         0: Disables all caching
         1: Enables Spotify Cache
@@ -1405,7 +1412,7 @@ class Audio(commands.Cog):
         3: Enables Lavalink Cache
         5: Enables all Caches
 
-        If you wish to disable a specific cache use negative number.
+        If you wish to disable a specific cache use a negative number.
 
         """
         current_level = CacheLevel(await self.config.cache_level())
@@ -1504,7 +1511,7 @@ class Audio(commands.Cog):
             age = 7
         msg += _("I've set the cache age to {age} days").format(age=age)
         await self.config.cache_age.set(age)
-        await ctx.maybe_send_embed(msg)
+        await self._embed_msg(ctx, msg)
 
     @commands.command()
     @commands.guild_only()
@@ -2705,7 +2712,7 @@ class Audio(commands.Cog):
             (player.current and not player.current.extras.get("autoplay")) or not player.current
         ):
             await self._embed_msg(ctx, _("Auto play started."))
-        elif not guild_data["notify"] and player.current:
+        elif player.current:
             await self._embed_msg(ctx, _("Adding a track to queue."))
 
     async def _get_spotify_tracks(self, ctx: commands.Context, query: dataclasses.Query):
@@ -3057,7 +3064,7 @@ class Audio(commands.Cog):
             else:
                 msg = _(
                     "You do not have the permissions to manage "
-                    "playlists in the {scope} scope.".format(scope=humanize_scope(scope))
+                    "playlists in {scope} scope.".format(scope=humanize_scope(scope, the=True))
                 )
 
             await self._embed_msg(ctx, msg)
@@ -3284,7 +3291,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(scope)
+                    id=playlist_id, scope=humanize_scope(scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -3303,6 +3310,9 @@ class Audio(commands.Cog):
         track_list = playlist.tracks
         tracks_obj_list = playlist.tracks_obj
         to_append_count = len(to_append)
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
         appended = 0
 
         if to_append and to_append_count == 1:
@@ -3310,8 +3320,8 @@ class Audio(commands.Cog):
             if to in tracks_obj_list:
                 return await self._embed_msg(
                     ctx,
-                    _("{track} is already in {playlist} (`{id}`).").format(
-                        track=to.title, playlist=playlist.name, id=playlist.id
+                    _("{track} is already in {playlist} (`{id}`) [**{scope}**].").format(
+                        track=to.title, playlist=playlist.name, id=playlist.id, scope=scope_name
                     ),
                 )
             else:
@@ -3333,13 +3343,13 @@ class Audio(commands.Cog):
             track_title = to_append[0]["info"]["title"]
             return await self._embed_msg(
                 ctx,
-                _("{track} appended to {playlist} (`{id}`).").format(
-                    track=track_title, playlist=playlist.name, id=playlist.id
+                _("{track} appended to {playlist} (`{id}`) [**{scope}**].").format(
+                    track=track_title, playlist=playlist.name, id=playlist.id, scope=scope_name
                 ),
             )
 
-        desc = _("{num} tracks appended to {playlist} (`{id}`).").format(
-            num=appended, playlist=playlist.name, id=playlist.id
+        desc = _("{num} tracks appended to {playlist} (`{id}`) [**{scope}**].").format(
+            num=appended, playlist=playlist.name, id=playlist.id, scope=scope_name
         )
         if to_append_count > appended:
             diff = to_append_count - appended
@@ -3408,9 +3418,16 @@ class Audio(commands.Cog):
                 ctx.guild,
                 False,
             ]
-        from_scope, from_author, from_guild, specified_from_user, to_scope, to_author, to_guild, specified_to_user = (
-            scope_data
-        )
+        (
+            from_scope,
+            from_author,
+            from_guild,
+            specified_from_user,
+            to_scope,
+            to_author,
+            to_guild,
+            specified_to_user,
+        ) = scope_data
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
@@ -3436,7 +3453,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(to_scope)
+                    id=playlist_id, scope=humanize_scope(to_scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -3454,14 +3471,14 @@ class Audio(commands.Cog):
             to_guild,
         )
         if to_scope == PlaylistScope.GLOBAL.value:
-            to_scope_name = ctx.guild.me
+            to_scope_name = "the Global"
         elif to_scope == PlaylistScope.USER.value:
             to_scope_name = to_author
         else:
             to_scope_name = to_guild
 
         if from_scope == PlaylistScope.GLOBAL.value:
-            from_scope_name = ctx.guild.me
+            from_scope_name = "the Global"
         elif from_scope == PlaylistScope.USER.value:
             from_scope_name = from_author
         else:
@@ -3474,8 +3491,8 @@ class Audio(commands.Cog):
             ).format(
                 name=from_playlist.name,
                 from_id=from_playlist.id,
-                from_scope=humanize_scope(from_scope, ctx=from_scope_name),
-                to_scope=humanize_scope(to_scope, ctx=to_scope_name),
+                from_scope=humanize_scope(from_scope, ctx=from_scope_name, the=True),
+                to_scope=humanize_scope(to_scope, ctx=to_scope_name, the=True),
                 to_id=to_playlist.id,
             ),
         )
@@ -3519,7 +3536,9 @@ class Audio(commands.Cog):
         scope, author, guild, specified_user = scope_data
 
         temp_playlist = FakePlaylist(author.id)
-
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
         if not await self.can_manage_playlist(scope, temp_playlist, ctx, author, guild):
             return
         playlist_name = playlist_name.split(" ")[0].strip('"')[:32]
@@ -3534,7 +3553,9 @@ class Audio(commands.Cog):
         playlist = await create_playlist(ctx, scope, playlist_name, None, None, author, guild)
         return await self._embed_msg(
             ctx,
-            _("Empty playlist {name} ({id}) created.").format(name=playlist.name, id=playlist.id),
+            _("Empty playlist {name} (`{id}`) [**{scope}**] created.").format(
+                name=playlist.name, id=playlist.id, scope=scope_name
+            ),
         )
 
     @playlist.command(name="delete", aliases=["del"], usage="<playlist_name_OR_id> [args]")
@@ -3596,7 +3617,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(scope)
+                    id=playlist_id, scope=humanize_scope(scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -3606,11 +3627,16 @@ class Audio(commands.Cog):
 
         if not await self.can_manage_playlist(scope, playlist, ctx, author, guild):
             return
-
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
         await delete_playlist(scope, playlist.id, guild or ctx.guild, author or ctx.author)
 
         await self._embed_msg(
-            ctx, _("{name} (`{id}`) playlist deleted.").format(name=playlist.name, id=playlist.id)
+            ctx,
+            _("{name} (`{id}`) [**{scope}**] playlist deleted.").format(
+                name=playlist.name, id=playlist.id, scope=scope_name
+            ),
         )
 
     @playlist.command(name="dedupe", usage="<playlist_name_OR_id> [args]")
@@ -3654,6 +3680,9 @@ class Audio(commands.Cog):
         if scope_data is None:
             scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
         scope, author, guild, specified_user = scope_data
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
@@ -3672,7 +3701,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(scope)
+                    id=playlist_id, scope=humanize_scope(scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -3714,15 +3743,21 @@ class Audio(commands.Cog):
         if original_count - final_count != 0:
             await self._embed_msg(
                 ctx,
-                _("Removed {track_diff} duplicated tracks from {name} (`{id}`) playlist.").format(
-                    name=playlist.name, id=playlist.id, track_diff=original_count - final_count
+                _(
+                    "Removed {track_diff} duplicated "
+                    "tracks from {name} (`{id}`) [**{scope}**] playlist."
+                ).format(
+                    name=playlist.name,
+                    id=playlist.id,
+                    track_diff=original_count - final_count,
+                    scope=scope_name,
                 ),
             )
         else:
             await self._embed_msg(
                 ctx,
-                _("{name} (`{id}`) playlist has no duplicate tracks.").format(
-                    name=playlist.name, id=playlist.id
+                _("{name} (`{id}`) [**{scope}**] playlist has no duplicate tracks.").format(
+                    name=playlist.name, id=playlist.id, scope=scope_name
                 ),
             )
 
@@ -3792,7 +3827,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(scope)
+                    id=playlist_id, scope=humanize_scope(scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -3883,6 +3918,9 @@ class Audio(commands.Cog):
         if scope_data is None:
             scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
         scope, author, guild, specified_user = scope_data
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
@@ -3901,7 +3939,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(scope)
+                    id=playlist_id, scope=humanize_scope(scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -3937,23 +3975,27 @@ class Audio(commands.Cog):
             msg = "No tracks."
 
         if not playlist.url:
-            embed_title = _("Playlist info for {playlist_name} (`{id}`):\n").format(
-                playlist_name=playlist.name, id=playlist.id
+            embed_title = _("Playlist info for {playlist_name} (`{id}`) [**{scope}**]:\n").format(
+                playlist_name=playlist.name, id=playlist.id, scope=scope_name
             )
         else:
-            embed_title = _("Playlist info for {playlist_name} (`{id}`):\nURL: {url}").format(
-                playlist_name=playlist.name, url=playlist.url, id=playlist.id
+            embed_title = _(
+                "Playlist info for {playlist_name} (`{id}`) [**{scope}**]:\nURL: {url}"
+            ).format(
+                playlist_name=playlist.name, url=playlist.url, id=playlist.id, scope=scope_name
             )
 
         page_list = []
-        for page in pagify(msg, delims=["\n"], page_length=2000):
+        pages = list(pagify(msg, delims=["\n"], page_length=2000))
+        total_pages = len(pages)
+        for numb, page in enumerate(pages, start=1):
             embed = discord.Embed(
                 colour=await ctx.embed_colour(), title=embed_title, description=page
             )
             author_obj = self.bot.get_user(playlist.author)
             embed.set_footer(
-                text=_("Author: {author_name} | {num} track(s)").format(
-                    author_name=author_obj, num=track_len
+                text=_("Page {page}/{pages} | Author: {author_name} | {num} track(s)").format(
+                    author_name=author_obj, num=track_len, pages=total_pages, page=numb
                 )
             )
             page_list.append(embed)
@@ -4104,9 +4146,10 @@ class Audio(commands.Cog):
         """
         if scope_data is None:
             scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
-
         scope, author, guild, specified_user = scope_data
-
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
         temp_playlist = FakePlaylist(author.id)
         if not await self.can_manage_playlist(scope, temp_playlist, ctx, author, guild):
             return
@@ -4136,8 +4179,10 @@ class Audio(commands.Cog):
         playlist = await create_playlist(ctx, scope, playlist_name, None, tracklist, author, guild)
         await self._embed_msg(
             ctx,
-            _("Playlist {name} (`{id}`) saved from current queue: {num} tracks added.").format(
-                name=playlist.name, num=len(playlist.tracks), id=playlist.id
+            _(
+                "Playlist {name} (`{id}`) [**{scope}**] saved from current queue: {num} tracks added."
+            ).format(
+                name=playlist.name, num=len(playlist.tracks), id=playlist.id, scope=scope_name
             ),
         )
 
@@ -4183,6 +4228,9 @@ class Audio(commands.Cog):
         if scope_data is None:
             scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
         scope, author, guild, specified_user = scope_data
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
 
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
@@ -4201,7 +4249,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(scope)
+                    id=playlist_id, scope=humanize_scope(scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -4228,15 +4276,19 @@ class Audio(commands.Cog):
             await self._embed_msg(
                 ctx,
                 _(
-                    "{num} entries have been removed from the playlist {playlist_name} (`{id}`)."
-                ).format(num=del_count, playlist_name=playlist.name, id=playlist.id),
+                    "{num} entries have been removed from the"
+                    " playlist {playlist_name} (`{id}`) [**{scope}**]."
+                ).format(
+                    num=del_count, playlist_name=playlist.name, id=playlist.id, scope=scope_name
+                ),
             )
         else:
             await self._embed_msg(
                 ctx,
                 _(
-                    "The track has been removed from the playlist: {playlist_name} (`{id}`)."
-                ).format(playlist_name=playlist.name, id=playlist.id),
+                    "The track has been removed from the"
+                    " playlist: {playlist_name} (`{id}`) [**{scope}**]."
+                ).format(playlist_name=playlist.name, id=playlist.id, scope=scope_name),
             )
 
     @playlist.command(name="save", usage="<name> <url> [args]")
@@ -4281,6 +4333,9 @@ class Audio(commands.Cog):
         if scope_data is None:
             scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
         scope, author, guild, specified_user = scope_data
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
 
         temp_playlist = FakePlaylist(author.id)
         if not await self.can_manage_playlist(scope, temp_playlist, ctx, author, guild):
@@ -4306,8 +4361,8 @@ class Audio(commands.Cog):
             )
             return await self._embed_msg(
                 ctx,
-                _("Playlist {name} (`{id}`) saved: {num} tracks added.").format(
-                    name=playlist.name, num=len(tracklist), id=playlist.id
+                _("Playlist {name} (`{id}`) [**{scope}**] saved: {num} tracks added.").format(
+                    name=playlist.name, num=len(tracklist), id=playlist.id, scope=scope_name
                 ),
             )
 
@@ -4351,7 +4406,6 @@ class Audio(commands.Cog):
         """
         if scope_data is None:
             scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
-
         scope, author, guild, specified_user = scope_data
         dj_enabled = await self.config.guild(ctx.guild).dj_enabled()
         if dj_enabled:
@@ -4444,7 +4498,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(scope)
+                    id=playlist_id, scope=humanize_scope(scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -4495,7 +4549,6 @@ class Audio(commands.Cog):
 
         if scope_data is None:
             scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
-
         scope, author, guild, specified_user = scope_data
         try:
             playlist_id, playlist_arg = await self._get_correct_playlist_id(
@@ -4522,7 +4575,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(scope)
+                    id=playlist_id, scope=humanize_scope(scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -4530,6 +4583,9 @@ class Audio(commands.Cog):
                 ctx, _("You need to specify the Guild ID for the guild to lookup.")
             )
         else:
+            scope_name = humanize_scope(
+                scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+            )
             if added or removed:
                 _colour = await ctx.embed_colour()
                 embeds = []
@@ -4581,8 +4637,8 @@ class Audio(commands.Cog):
             else:
                 return await self._embed_msg(
                     ctx,
-                    _("No changes for {name} (`{id}`).").format(
-                        id=playlist.id, name=playlist.name
+                    _("No changes for {name} (`{id}`) [**{scope}**].").format(
+                        id=playlist.id, name=playlist.name, scope=scope_name
                     ),
                 )
 
@@ -4624,7 +4680,6 @@ class Audio(commands.Cog):
         """
         if scope_data is None:
             scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
-
         scope, author, guild, specified_user = scope_data
         temp_playlist = FakePlaylist(author.id)
         if not await self.can_manage_playlist(scope, temp_playlist, ctx, author, guild):
@@ -4748,7 +4803,6 @@ class Audio(commands.Cog):
         """
         if scope_data is None:
             scope_data = [PlaylistScope.GUILD.value, ctx.author, ctx.guild, False]
-
         scope, author, guild, specified_user = scope_data
 
         new_name = new_name.split(" ")[0].strip('"')[:32]
@@ -4778,7 +4832,7 @@ class Audio(commands.Cog):
             return await self._embed_msg(
                 ctx,
                 _("Playlist {id} does not exist in {scope} scope.").format(
-                    id=playlist_id, scope=humanize_scope(scope)
+                    id=playlist_id, scope=humanize_scope(scope, the=True)
                 ),
             )
         except MissingGuild:
@@ -4788,13 +4842,16 @@ class Audio(commands.Cog):
 
         if not await self.can_manage_playlist(scope, playlist, ctx, author, guild):
             return
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
         old_name = playlist.name
         update = {"name": new_name}
         await playlist.edit(update)
-        msg = _("'{old}' playlist has been renamed to '{new}' (`{id}`)").format(
-            old=bold(old_name), new=bold(playlist.name), id=playlist.id
+        msg = _("'{old}' playlist has been renamed to '{new}' (`{id}`) [**{scope}**]").format(
+            old=bold(old_name), new=bold(playlist.name), id=playlist.id, scope=scope_name
         )
-        await ctx.maybe_send_embed(msg)
+        await self._embed_msg(ctx, msg)
 
     async def _load_v3_playlist(
         self,
@@ -4823,9 +4880,12 @@ class Audio(commands.Cog):
         playlist = await create_playlist(
             ctx, scope, uploaded_playlist_name, uploaded_playlist_url, track_list, author, guild
         )
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
         if not track_count:
-            msg = _("Empty playlist {name} (`{id}`) created.").format(
-                name=playlist.name, id=playlist.id
+            msg = _("Empty playlist {name} (`{id}`) [**{scope}**] created.").format(
+                name=playlist.name, id=playlist.id, scope=scope_name
             )
         elif uploaded_track_count != track_count:
             bad_tracks = uploaded_track_count - track_count
@@ -4905,9 +4965,12 @@ class Audio(commands.Cog):
         playlist = await create_playlist(
             ctx, scope, uploaded_playlist_name, playlist_url, track_list, author, guild
         )
+        scope_name = humanize_scope(
+            scope, ctx=guild if scope == PlaylistScope.GUILD.value else author
+        )
         if not successfull_count:
-            msg = _("Empty playlist {name} (`{id}`) created.").format(
-                name=playlist.name, id=playlist.id
+            msg = _("Empty playlist {name} (`{id}`) [**{scope}**] created.").format(
+                name=playlist.name, id=playlist.id, scope=scope_name
             )
         elif uploaded_track_count != successfull_count:
             bad_tracks = uploaded_track_count - successfull_count
