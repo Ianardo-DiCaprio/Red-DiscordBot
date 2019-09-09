@@ -1,9 +1,9 @@
 import calendar
 import logging
 import random
-from collections import defaultdict, deque
+from collections import defaultdict, deque, namedtuple
 from enum import Enum
-from typing import cast, Iterable
+from typing import cast, Iterable, Union
 import humanize
 
 import discord
@@ -11,7 +11,7 @@ import discord
 from redbot.cogs.bank import check_global_setting_guildowner, check_global_setting_admin
 from redbot.core import Config, bank, commands, errors
 from redbot.core.i18n import Translator, cog_i18n
-from redbot.core.utils.chat_formatting import box
+from redbot.core.utils.chat_formatting import box, humanize_number
 from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
 
 from redbot.core.bot import Red
@@ -21,6 +21,7 @@ T_ = Translator("Economy", __file__)
 logger = logging.getLogger("red.economy")
 
 NUM_ENC = "\N{COMBINING ENCLOSING KEYCAP}"
+MOCK_MEMBER = namedtuple("Member", "id guild")
 
 
 class SMReel(Enum):
@@ -39,40 +40,43 @@ class SMReel(Enum):
 _ = lambda s: s
 PAYOUTS = {
     (SMReel.two, SMReel.two, SMReel.six): {
-        "payout": lambda x: x * 2500 + x,
-        "phrase": _("JACKPOT! 226! Your bid has been multiplied * 2500!"),
+        "payout": lambda x: x * 50 + x,
+        "phrase": _("JACKPOT! 226! Your bid has been multiplied * 50!"),
     },
     (SMReel.flc, SMReel.flc, SMReel.flc): {
-        "payout": lambda x: x + 1000,
-        "phrase": _("4LC! +1000!"),
+        "payout": lambda x: x * 25,
+        "phrase": _("4LC! Your bid has been multiplied * 25!"),
     },
     (SMReel.cherries, SMReel.cherries, SMReel.cherries): {
-        "payout": lambda x: x + 800,
-        "phrase": _("Three cherries! +800!"),
+        "payout": lambda x: x * 20,
+        "phrase": _("Three cherries! Your bid has been multiplied * 20!"),
     },
     (SMReel.two, SMReel.six): {
-        "payout": lambda x: x * 4 + x,
+        "payout": lambda x: x * 4,
         "phrase": _("2 6! Your bid has been multiplied * 4!"),
     },
     (SMReel.cherries, SMReel.cherries): {
-        "payout": lambda x: x * 3 + x,
+        "payout": lambda x: x * 3,
         "phrase": _("Two cherries! Your bid has been multiplied * 3!"),
     },
-    "3 symbols": {"payout": lambda x: x + 500, "phrase": _("Three symbols! +500!")},
+    "3 symbols": {
+        "payout": lambda x: x * 10,
+        "phrase": _("Three symbols! Your bid has been multiplied * 10!"),
+    },
     "2 symbols": {
-        "payout": lambda x: x * 2 + x,
+        "payout": lambda x: x * 2,
         "phrase": _("Two consecutive symbols! Your bid has been multiplied * 2!"),
     },
 }
 
 SLOT_PAYOUTS_MSG = _(
     "Slot machine payouts:\n"
-    "{two.value} {two.value} {six.value} Bet * 2500\n"
-    "{flc.value} {flc.value} {flc.value} +1000\n"
-    "{cherries.value} {cherries.value} {cherries.value} +800\n"
+    "{two.value} {two.value} {six.value} Bet * 50\n"
+    "{flc.value} {flc.value} {flc.value} Bet * 25\n"
+    "{cherries.value} {cherries.value} {cherries.value} Bet * 20\n"
     "{two.value} {six.value} Bet * 4\n"
     "{cherries.value} {cherries.value} Bet * 3\n\n"
-    "Three symbols: +500\n"
+    "Three symbols: Bet * 10\n"
     "Two symbols: Bet * 2"
 ).format(**SMReel.__dict__)
 _ = T_
@@ -515,7 +519,7 @@ class Economy(commands.Cog):
                 payout = PAYOUTS["3 symbols"]
             elif has_two:
                 payout = PAYOUTS["2 symbols"]
-
+        pay = 0
         if payout:
             then = await bank.get_balance(author)
             then = humanize.intcomma(then)
@@ -547,16 +551,16 @@ class Economy(commands.Cog):
             phrase = _("Nothing!")
         await channel.send(
             (
-                "{slot}\n{author.mention} {phrase}\n\n"
-                + _("Your bid: {amount}")
-                + "\n{old_balance} → {new_balance}!"
+                + _("Your bid: {bid}")
+                + _("\n{old_balance} - {bid} (Your bid) + {pay} (Winnings) → {new_balance}!")
             ).format(
                 slot=slot,
                 author=author,
                 phrase=phrase,
-                amount=bid,
+                bid=bid,
                 old_balance=then,
                 new_balance=now,
+                pay=pay,
             )
         )
 
