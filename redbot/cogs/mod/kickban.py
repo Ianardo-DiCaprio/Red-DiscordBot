@@ -173,6 +173,18 @@ class KickBanMixin(MixinMeta):
             await ctx.send(_("I cannot do that due to discord hierarchy rules"))
             return
         audit_reason = get_audit_reason(author, reason)
+        if reason == None:
+            reason = "No reason was given."
+        self == self.bot.get_cog("Mod")
+        toggle = await self.settings.guild(guild).toggle_dm()
+        if toggle == True:
+            if guild.me.top_role >= user.top_role and user != guild.owner and author != user:
+                with contextlib.suppress(discord.HTTPException):
+                    em = discord.Embed(
+                        title=_("**You have been kicked from {guild}.**").format(guild=guild)
+                    )
+                    em.add_field(name=_("**Reason**"), value=reason, inline=False)
+                    await user.send(embed=em)
         try:
             await guild.kick(user, reason=audit_reason)
             log.info("{}({}) kicked {}({})".format(author.name, author.id, user.name, user.id))
@@ -205,19 +217,35 @@ class KickBanMixin(MixinMeta):
         self,
         ctx: commands.Context,
         user: discord.Member,
-        days: Optional[int] = 0,
+        days: Optional[int] = None,
         *,
         reason: str = None,
     ):
         """Ban a user from this server and optionally delete days of messages.
 
         If days is not a number, it's treated as the first word of the reason.
-        Minimum 0 days, maximum 7. Defaults to 0."""
+        Minimum 0 days, maximum 7. If not specified, defaultdays setting will be used instead."""
+        guild = ctx.guild
+        if days is None:
+            days = await self.settings.guild(guild).default_days()
+        author = ctx.author
+        guild = ctx.guild
+        if reason == None:
+            reason = "No reason was given."
+        self == self.bot.get_cog("Mod")
+        toggle = await self.settings.guild(guild).toggle_dm()
+        if toggle == True:
+            if guild.me.top_role >= user.top_role and user != guild.owner and author != user:
+                with contextlib.suppress(discord.HTTPException):
+                    em = discord.Embed(
+                        title=_("**You have been banned from {guild}.**").format(guild=guild)
+                    )
+                    em.add_field(name=_("**Reason**"), value=reason, inline=False)
+                    await user.send(embed=em)
 
         result = await self.ban_user(
             user=user, ctx=ctx, days=days, reason=reason, create_modlog_case=True
         )
-
         if result is True:
             await ctx.send(_("Done. It was about time."))
         elif isinstance(result, str):

@@ -4,6 +4,8 @@ import random
 from collections import defaultdict, deque, namedtuple
 from enum import Enum
 from typing import cast, Iterable, Union
+import humanize
+
 
 import discord
 
@@ -156,20 +158,24 @@ class Economy(commands.Cog):
         """Show the user's account balance.
 
         Defaults to yours."""
+        currency = await bank.get_currency_name(ctx.guild)
         if user is None:
             user = ctx.author
-
-        bal = await bank.get_balance(user)
-        currency = await bank.get_currency_name(ctx.guild)
-        max_bal = await bank.get_max_balance(ctx.guild)
-        if bal > max_bal:
-            bal = max_bal
-            await bank.set_balance(user, bal)
-        await ctx.send(
-            _("{user}'s balance is {num} {currency}").format(
-                user=user.display_name, num=humanize_number(bal), currency=currency
+            bal = await bank.get_balance(user)
+            bal = humanize.intcomma(bal)
+            await ctx.send(
+                _("Your balance is currently {num} {currency}").format(
+                    num=bal, currency=currency
+                )
             )
-        )
+        else:
+            bal = await bank.get_balance(user)
+            bal = humanize.intcomma(bal)
+            await ctx.send(
+                _("{user}'s balance is {num} {currency}").format(
+                    user=user.display_name, num=bal, currency=currency
+                )
+            )
 
     @_bank.command()
     async def transfer(self, ctx: commands.Context, to: discord.Member, amount: int):
@@ -225,6 +231,7 @@ class Economy(commands.Cog):
                 )
             else:
                 await bank.set_balance(to, creds.sum)
+                creds.sum = humanize.intcomma(creds.sum)
                 msg = _("{author} set {user}'s account balance to {num} {currency}.").format(
                     author=author.display_name,
                     num=humanize_number(creds.sum),
@@ -355,7 +362,8 @@ class Economy(commands.Cog):
                     await bank.deposit_credits(author, await self.config.PAYDAY_CREDITS())
                 except errors.BalanceTooHigh as exc:
                     await bank.set_balance(author, exc.max_balance)
-                    await ctx.send(
+                    exc.max_balance = humanize.intcomma(exc.max_balance)
+                    description = (
                         _(
                             "You've reached the maximum amount of {currency}!"
                             "Please spend some more \N{GRIMACING FACE}\n\n"
@@ -364,17 +372,20 @@ class Economy(commands.Cog):
                             currency=credits_name, new_balance=humanize_number(exc.max_balance)
                         )
                     )
+                    embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
+                    await ctx.send(embed=embed) 
                     return
                 next_payday = cur_time + await self.config.PAYDAY_TIME()
                 await self.config.user(author).next_payday.set(next_payday)
 
                 pos = await bank.get_leaderboard_position(author)
-                await ctx.send(
+                new_balance = await bank.get_balance(author)
+                new_balance = humanize.intcomma(new_balance)
+                description = (
                     _(
                         "{author.mention} Here, take some {currency}. "
                         "Enjoy! (+{amount} {currency}!)\n\n"
-                        "You currently have {new_balance} {currency}.\n\n"
-                        "You are currently #{pos} on the global leaderboard!"
+                        "You currently have {new_balance} {currency}."
                     ).format(
                         author=author,
                         currency=credits_name,
@@ -383,14 +394,21 @@ class Economy(commands.Cog):
                         pos=humanize_number(pos) if pos else pos,
                     )
                 )
-
+                image = "https://tchol.org/images/coin-png-free-17.png"
+                footer = (_("You are currently #{pos} on the global leaderboard!").format(pos=pos))
+                embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
+                embed.set_footer(text=footer)
+                embed.set_thumbnail(url=image)
+                await ctx.send(embed=embed)
             else:
                 dtime = self.display_time(next_payday - cur_time)
-                await ctx.send(
+                description = (
                     _(
                         "{author.mention} Too soon. For your next payday you have to wait {time}."
                     ).format(author=author, time=dtime)
                 )
+                embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
+                await ctx.send(embed=embed)
         else:
             next_payday = await self.config.member(author).next_payday()
             if cur_time >= next_payday:
@@ -405,7 +423,8 @@ class Economy(commands.Cog):
                     await bank.deposit_credits(author, credit_amount)
                 except errors.BalanceTooHigh as exc:
                     await bank.set_balance(author, exc.max_balance)
-                    await ctx.send(
+                    exc.max_balance = humanize.intcomma(exc.max_balance)
+                    description = (
                         _(
                             "You've reached the maximum amount of {currency}! "
                             "Please spend some more \N{GRIMACING FACE}\n\n"
@@ -414,16 +433,19 @@ class Economy(commands.Cog):
                             currency=credits_name, new_balance=humanize_number(exc.max_balance)
                         )
                     )
+                    embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
+                    await ctx.send(embed=embed)
                     return
                 next_payday = cur_time + await self.config.guild(guild).PAYDAY_TIME()
                 await self.config.member(author).next_payday.set(next_payday)
                 pos = await bank.get_leaderboard_position(author)
-                await ctx.send(
+                new_balance = await bank.get_balance(author)
+                new_balance = humanize.intcomma(new_balance)
+                description = (
                     _(
                         "{author.mention} Here, take some {currency}. "
                         "Enjoy! (+{amount} {currency}!)\n\n"
                         "You currently have {new_balance} {currency}.\n\n"
-                        "You are currently #{pos} on the global leaderboard!"
                     ).format(
                         author=author,
                         currency=credits_name,
@@ -432,17 +454,25 @@ class Economy(commands.Cog):
                         pos=humanize_number(pos) if pos else pos,
                     )
                 )
+                footer = (_("You are currently #{pos} on the global leaderboard!").format(pos=pos))
+                image = "https://spng.pngfind.com/pngs/s/3-37408_gold-coins-png-clipart-gold-coins-icon-png.png"
+                embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
+                embed.set_footer(text=footer)
+                embed.set_thumbnail(url=image)
+                await ctx.send(embed=embed)
             else:
                 dtime = self.display_time(next_payday - cur_time)
-                await ctx.send(
+                description = (
                     _(
                         "{author.mention} Too soon. For your next payday you have to wait {time}."
                     ).format(author=author, time=dtime)
                 )
+                embed = discord.Embed(title="**Payday** :moneybag:", description=description, color=0x8C05D2)
+                await ctx.send(embed=embed)
 
     @commands.command()
     @guild_only_check()
-    async def leaderboard(self, ctx: commands.Context, top: int = 10, show_global: bool = False):
+    async def leaderboard(self, ctx: commands.Context, top: int = 100, show_global: bool = False):
         """Print the leaderboard.
 
         Defaults to top 10.
@@ -469,7 +499,7 @@ class Economy(commands.Cog):
         header = "{pound:{pound_len}}{score:{bal_len}}{name:2}\n".format(
             pound="#",
             name=_("Name"),
-            score=_("Score"),
+            score=_("Credits"),
             bal_len=bal_len + 6,
             pound_len=pound_len + 3,
         )
@@ -484,8 +514,8 @@ class Economy(commands.Cog):
                 if await ctx.bot.is_owner(ctx.author):
                     user_id = f"({str(acc[0])})"
                 name = f"{acc[1]['name']} {user_id}"
-
             balance = acc[1]["balance"]
+            balance = humanize.intcomma(balance)
             if balance > max_bal:
                 balance = max_bal
                 await bank.set_balance(MOCK_MEMBER(acc[0], guild), balance)
@@ -595,12 +625,14 @@ class Economy(commands.Cog):
         pay = 0
         if payout:
             then = await bank.get_balance(author)
+            then = humanize.intcomma(then)
             pay = payout["payout"](bid)
             now = then - bid + pay
             try:
                 await bank.set_balance(author, now)
             except errors.BalanceTooHigh as exc:
                 await bank.set_balance(author, exc.max_balance)
+                exc.max_balance = humanize.intcomma(exc.max_balance)
                 await channel.send(
                     _(
                         "You've reached the maximum amount of {currency}! "
@@ -617,6 +649,8 @@ class Economy(commands.Cog):
             then = await bank.get_balance(author)
             await bank.withdraw_credits(author, bid)
             now = then - bid
+            now = humanize.intcomma(now)
+            then = humanize.intcomma(then)
             phrase = _("Nothing!")
         await channel.send(
             (
