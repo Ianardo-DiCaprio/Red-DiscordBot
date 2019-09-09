@@ -25,7 +25,7 @@ import redbot.core
 from redbot.core import Config, bank, checks, commands
 from redbot.core.data_manager import cog_data_path
 from redbot.core.i18n import Translator, cog_i18n
-from redbot.core.utils.chat_formatting import bold, box, pagify, inline
+from redbot.core.utils.chat_formatting import bold, box, pagify, humanize_number, inline
 from redbot.core.utils.menus import (
     DEFAULT_CONTROLS,
     close_menu,
@@ -476,7 +476,7 @@ class Audio(commands.Cog):
                 else:
                     dur = lavalink.utils.format_time(player.current.length)
                 embed = discord.Embed(
-                    colour=(await self._get_embed_colour(notify_channel)),
+                    colour=(await self.bot.get_embed_color(notify_channel)),
                     title=_("Now Playing"),
                     description=description,
                 )
@@ -508,7 +508,8 @@ class Audio(commands.Cog):
             if notify_channel:
                 notify_channel = self.bot.get_channel(notify_channel)
                 embed = discord.Embed(
-                    colour=(await self._get_embed_colour(notify_channel)), title=_("Queue ended.")
+                    colour=(await self.bot.get_embed_colour(notify_channel)),
+                    title=_("Queue ended."),
                 )
                 await notify_channel.send(embed=embed)
 
@@ -538,7 +539,7 @@ class Audio(commands.Cog):
                     description = bold("[{}]({})").format(player.current.title, player.current.uri)
 
                 embed = discord.Embed(
-                    colour=(await self._get_embed_colour(message_channel)),
+                    colour=(await self.bot.get_embed_color(message_channel)),
                     title=_("Track Error"),
                     description="{}\n{}".format(extra, description),
                 )
@@ -1036,7 +1037,7 @@ class Audio(commands.Cog):
             await self._embed_msg(
                 ctx,
                 _("Track queueing command price set to {price} {currency}.").format(
-                    price=price, currency=await bank.get_currency_name(ctx.guild)
+                    price=humanize_number(price), currency=await bank.get_currency_name(ctx.guild)
                 ),
             )
 
@@ -1227,7 +1228,9 @@ class Audio(commands.Cog):
             msg += _("DJ Role:          [{role.name}]\n").format(role=dj_role_obj)
         if jukebox:
             msg += _("Jukebox:          [{jukebox_name}]\n").format(jukebox_name=jukebox)
-            msg += _("Command price:    [{jukebox_price}]\n").format(jukebox_price=jukebox_price)
+            msg += _("Command price:    [{jukebox_price}]\n").format(
+                jukebox_price=humanize_number(jukebox_price)
+            )
         if maxlength > 0:
             msg += _("Max track length: [{tracklength}]\n").format(
                 tracklength=dynamic_time(maxlength)
@@ -1559,11 +1562,15 @@ class Audio(commands.Cog):
             em = discord.Embed(
                 colour=await ctx.embed_colour(),
                 title=_("Playing in {num}/{total} servers:").format(
-                    num=server_num, total=total_num
+                    num=humanize_number(server_num), total=humanize_number(total_num)
                 ),
                 description=page,
             )
-            em.set_footer(text="Page {}/{}".format(pages, (math.ceil(len(msg) / 1500))))
+            em.set_footer(
+                text="Page {}/{}".format(
+                    humanize_number(pages), humanize_number((math.ceil(len(msg) / 1500)))
+                )
+            )
             pages += 1
             servers_embed.append(em)
 
@@ -1743,7 +1750,9 @@ class Audio(commands.Cog):
             embed = discord.Embed(
                 colour=await ctx.embed_colour(), description=f"{header}\n{formatted_page}"
             )
-            embed.set_footer(text=_("{num} preset(s)").format(num=len(list(eq_presets.keys()))))
+            embed.set_footer(
+                text=_("{num} preset(s)").format(num=humanize_number(len(list(eq_presets.keys()))))
+            )
             page_list.append(embed)
         if len(page_list) == 1:
             return await ctx.send(embed=page_list[0])
@@ -3360,7 +3369,57 @@ class Audio(commands.Cog):
         embed = discord.Embed(
             title=_("Playlist modified"), colour=await ctx.embed_colour(), description=desc
         )
-        await ctx.send(embed=embed)
+        playlist_msg = await ctx.send(embed=embed1)
+        track_list = []
+        track_count = 0
+        now = int(time.time())
+        for i in spotify_info:
+            if stype == "album":
+                song_info = "{} {}".format(i["name"], i["artists"][0]["name"])
+            else:
+                song_info = "{} {}".format(i["track"]["name"], i["track"]["artists"][0]["name"])
+
+            try:
+                track_url = await self._youtube_api_search(yt_key, song_info)
+            except (RuntimeError, aiohttp.client_exceptions.ServerDisconnectedError):
+                error_embed = discord.Embed(
+                    colour=await ctx.embed_colour(),
+                    title=_("The connection was reset while loading the playlist."),
+                )
+                await playlist_msg.edit(embed=error_embed)
+                return None
+            try:
+                yt_track = await player.get_tracks(track_url)
+            except (RuntimeError, aiohttp.client_exceptions.ServerDisconnectedError):
+                return
+            try:
+                track_list.append(yt_track[0])
+            except IndexError:
+                pass
+            track_count += 1
+            if (track_count % 5 == 0) or (track_count == len(spotify_info)):
+                embed2 = discord.Embed(
+                    colour=await ctx.embed_colour(),
+                    title=_("Loading track {num}/{total}...").format(
+                        num=track_count, total=len(spotify_info)
+                    ),
+                )
+                if track_count == 5:
+                    five_time = int(time.time()) - now
+                if track_count >= 5:
+                    remain_tracks = len(spotify_info) - track_count
+                    time_remain = (remain_tracks / 5) * five_time
+                    if track_count < len(spotify_info):
+                        seconds = self._dynamic_time(int(time_remain))
+                    if track_count == len(spotify_info):
+                        seconds = "0s"
+                    embed2.set_footer(
+                        text=_("Approximate time remaining: {seconds}").format(seconds=seconds)
+                    )
+                try:
+                    await playlist_msg.edit(embed=embed2)
+                except discord.errors.NotFound:
+                    pass
 
     @playlist.command(name="copy", usage="<id_or_name> [args]")
     async def _playlist_copy(
@@ -6162,8 +6221,8 @@ class Audio(commands.Cog):
                         " Votes: {num_votes}/{num_members}"
                         " ({cur_percent}% out of {required_percent}% needed)"
                     ).format(
-                        num_votes=num_votes,
-                        num_members=num_members,
+                        num_votes=humanize_number(num_votes),
+                        num_members=humanize_number(num_members),
                         cur_percent=vote,
                         required_percent=percent,
                     )
@@ -6592,14 +6651,12 @@ class Audio(commands.Cog):
             return False
 
     async def _check_api_tokens(self):
-        spotify = await self.bot.db.api_tokens.get_raw(
-            "spotify", default={"client_id": "", "client_secret": ""}
-        )
-        youtube = await self.bot.db.api_tokens.get_raw("youtube", default={"api_key": ""})
+        spotify = await self.bot.get_shared_api_tokens("spotify")
+        youtube = await self.bot.get_shared_api_tokens("youtube")
         return {
-            "spotify_client_id": spotify["client_id"],
-            "spotify_client_secret": spotify["client_secret"],
-            "youtube_api": youtube["api_key"],
+            "spotify_client_id": spotify.get("client_id", ""),
+            "spotify_client_secret": spotify.get("client_secret", ""),
+            "youtube_api": youtube.get("api_key", ""),
         }
 
     async def _check_external(self):
@@ -6627,7 +6684,7 @@ class Audio(commands.Cog):
                 await self._embed_msg(
                     ctx,
                     _("Not enough {currency} ({required_credits} required).").format(
-                        currency=credits_name, required_credits=jukebox_price
+                        currency=credits_name, required_credits=humanize_number(jukebox_price)
                     ),
                 )
                 return False
@@ -6851,6 +6908,190 @@ class Audio(commands.Cog):
             return False
         except KeyError:
             return False
+
+    @staticmethod
+    async def _queue_duration(ctx):
+        player = lavalink.get_player(ctx.guild.id)
+        duration = []
+        for i in range(len(player.queue)):
+            if not player.queue[i].is_stream:
+                duration.append(player.queue[i].length)
+        queue_duration = sum(duration)
+        if not player.queue:
+            queue_duration = 0
+        try:
+            if not player.current.is_stream:
+                remain = player.current.length - player.position
+            else:
+                remain = 0
+        except AttributeError:
+            remain = 0
+        queue_total_duration = remain + queue_duration
+        return queue_total_duration
+
+    @staticmethod
+    async def _remove_react(message, react_emoji, react_user):
+        try:
+            await message.remove_reaction(react_emoji, react_user)
+        except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+            pass
+
+    @staticmethod
+    def _to_json(ctx, playlist_url, tracklist):
+        playlist = {"author": ctx.author.id, "playlist_url": playlist_url, "tracks": tracklist}
+        return playlist
+
+    @staticmethod
+    def _track_creator(player, position=None, other_track=None):
+        if position == "np":
+            queued_track = player.current
+        elif position is None:
+            queued_track = other_track
+        else:
+            queued_track = player.queue[position]
+        track_keys = queued_track._info.keys()
+        track_values = queued_track._info.values()
+        track_id = queued_track.track_identifier
+        track_info = {}
+        for k, v in zip(track_keys, track_values):
+            track_info[k] = v
+        keys = ["track", "info"]
+        values = [track_id, track_info]
+        track_obj = {}
+        for key, value in zip(keys, values):
+            track_obj[key] = value
+        return track_obj
+
+    @staticmethod
+    def _track_limit(ctx, track, maxlength):
+        try:
+            length = round(track.length / 1000)
+        except AttributeError:
+            length = round(track / 1000)
+        if length > 900000000000000:  # livestreams return 9223372036854775807ms
+            return True
+        elif length >= maxlength:
+            return False
+        else:
+            return True
+
+    async def _time_convert(self, length):
+        match = re.compile(r"(?:(\d+):)?([0-5]?[0-9]):([0-5][0-9])").match(length)
+        if match is not None:
+            hr = int(match.group(1)) if match.group(1) else 0
+            mn = int(match.group(2)) if match.group(2) else 0
+            sec = int(match.group(3)) if match.group(3) else 0
+            pos = sec + (mn * 60) + (hr * 3600)
+            return pos * 1000
+        else:
+            try:
+                return int(length) * 1000
+            except ValueError:
+                return 0
+
+    @staticmethod
+    def _url_check(url):
+        valid_tld = [
+            "youtube.com",
+            "youtu.be",
+            "soundcloud.com",
+            "bandcamp.com",
+            "vimeo.com",
+            "mixer.com",
+            "twitch.tv",
+            "spotify.com",
+            "localtracks",
+        ]
+        query_url = urlparse(url)
+        url_domain = ".".join(query_url.netloc.split(".")[-2:])
+        if not query_url.netloc:
+            url_domain = ".".join(query_url.path.split("/")[0].split(".")[-2:])
+        return True if url_domain in valid_tld else False
+
+    @staticmethod
+    def _userlimit(channel):
+        if channel.user_limit == 0:
+            return False
+        if channel.user_limit < len(channel.members) + 1:
+            return True
+        else:
+            return False
+
+    async def _youtube_api_search(self, yt_key, query):
+        params = {"q": query, "part": "id", "key": yt_key, "maxResults": 1, "type": "video"}
+        yt_url = "https://www.googleapis.com/youtube/v3/search"
+        try:
+            async with self.session.request("GET", yt_url, params=params) as r:
+                if r.status == 400:
+                    return None
+                else:
+                    search_response = await r.json()
+        except RuntimeError:
+            return None
+        for search_result in search_response.get("items", []):
+            if search_result["id"]["kind"] == "youtube#video":
+                return "https://www.youtube.com/watch?v={}".format(search_result["id"]["videoId"])
+
+    # Spotify-related methods below are originally from: https://github.com/Just-Some-Bots/MusicBot/blob/master/musicbot/spotify.py
+
+    async def _check_token(self, token):
+        now = int(time.time())
+        return token["expires_at"] - now < 60
+
+    async def _get_spotify_token(self):
+        if self.spotify_token and not await self._check_token(self.spotify_token):
+            return self.spotify_token["access_token"]
+        token = await self._request_token()
+        if token is None:
+            log.debug("Requested a token from Spotify, did not end up getting one.")
+        try:
+            token["expires_at"] = int(time.time()) + token["expires_in"]
+        except KeyError:
+            return
+        self.spotify_token = token
+        log.debug("Created a new access token for Spotify: {0}".format(token))
+        return self.spotify_token["access_token"]
+
+    async def _make_get(self, url, headers=None):
+        async with self.session.request("GET", url, headers=headers) as r:
+            if r.status != 200:
+                log.debug(
+                    "Issue making GET request to {0}: [{1.status}] {2}".format(
+                        url, r, await r.json()
+                    )
+                )
+            return await r.json()
+
+    async def _make_post(self, url, payload, headers=None):
+        async with self.session.post(url, data=payload, headers=headers) as r:
+            if r.status != 200:
+                log.debug(
+                    "Issue making POST request to {0}: [{1.status}] {2}".format(
+                        url, r, await r.json()
+                    )
+                )
+            return await r.json()
+
+    async def _make_spotify_req(self, url):
+        token = await self._get_spotify_token()
+        return await self._make_get(url, headers={"Authorization": "Bearer {0}".format(token)})
+
+    def _make_token_auth(self, client_id, client_secret):
+        auth_header = base64.b64encode((client_id + ":" + client_secret).encode("ascii"))
+        return {"Authorization": "Basic %s" % auth_header.decode("ascii")}
+
+    async def _request_token(self):
+        tokens = await self.bot.get_shared_api_tokens("spotify")
+        self.client_id = tokens.get("client_id", "")
+        self.client_secret = tokens.get("client_secret", "")
+        payload = {"grant_type": "client_credentials"}
+        headers = self._make_token_auth(
+            self.client_id["client_id"], self.client_secret["client_secret"]
+        )
+        r = await self._make_post(
+            "https://accounts.spotify.com/api/token", payload=payload, headers=headers
+        )
+        return r
 
     @commands.Cog.listener()
     async def on_voice_state_update(
