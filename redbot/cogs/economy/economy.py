@@ -1,9 +1,9 @@
 import calendar
 import logging
 import random
-from collections import defaultdict, deque, namedtuple
+from collections import defaultdict, deque
 from enum import Enum
-from typing import cast, Iterable, Union
+from typing import cast, Iterable
 import humanize
 
 import discord
@@ -11,7 +11,7 @@ import discord
 from redbot.cogs.bank import check_global_setting_guildowner, check_global_setting_admin
 from redbot.core import Config, bank, commands, errors
 from redbot.core.i18n import Translator, cog_i18n
-from redbot.core.utils.chat_formatting import box, humanize_number
+from redbot.core.utils.chat_formatting import box
 from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
 
 from redbot.core.bot import Red
@@ -21,7 +21,6 @@ T_ = Translator("Economy", __file__)
 logger = logging.getLogger("red.economy")
 
 NUM_ENC = "\N{COMBINING ENCLOSING KEYCAP}"
-MOCK_MEMBER = namedtuple("Member", "id guild")
 
 
 class SMReel(Enum):
