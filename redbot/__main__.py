@@ -79,7 +79,7 @@ async def sigterm_handler(red, log):
 
 
 def main():
-    description = "Red V3"
+    description = "Red V3 (c) Cog Creators"
     cli_flags = parse_cli_flags(sys.argv[1:])
     if cli_flags.list_instances:
         list_instances()
@@ -118,6 +118,13 @@ def main():
     loop.run_until_complete(red._maybe_update_config())
     init_global_checks(red)
     init_events(red, cli_flags)
+
+    # lib folder has to be in sys.path before trying to load any 3rd-party cog (GH-3061)
+    # We might want to change handling of requirements in Downloader at later date
+    LIB_PATH = data_manager.cog_data_path(raw_name="Downloader") / "lib"
+    LIB_PATH.mkdir(parents=True, exist_ok=True)
+    if str(LIB_PATH) not in sys.path:
+        sys.path.append(str(LIB_PATH))
 
     red.add_cog(Core(red))
     red.add_cog(CogManagerUI())
