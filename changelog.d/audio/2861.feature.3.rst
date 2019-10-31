@@ -1,1 +1,0 @@
-:code:`[p]playlist rename` will now allow users to rename existing playlists.

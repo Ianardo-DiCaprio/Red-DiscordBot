@@ -1,2 +1,0 @@
-:code:`[p]audioset cache` can be used to set the cache level. **It's off by default**.
-

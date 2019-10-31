@@ -1,1 +1,0 @@
-When enqueuing a single track with shuffle on the correct track number is shown.
