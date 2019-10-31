@@ -12,7 +12,9 @@ import lavalink
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 from . import dataclasses
+
 from .converters import _pass_config_to_converters
+
 from .playlists import _pass_config_to_playlist
 
 __all__ = [
@@ -297,7 +299,8 @@ class CacheLevel:
         return self.is_subset(other) and self != other
 
     def is_strict_superset(self, other):
-        """Returns ``True`` if the caching level on other are a strict superset of those on self."""
+        """Returns ``True`` if the caching level on
+        other are a strict superset of those on self."""
         return self.is_superset(other) and self != other
 
     __le__ = is_subset

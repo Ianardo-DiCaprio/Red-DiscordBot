@@ -23,10 +23,11 @@ __all__ = [
     "reset_playlist",
     "delete_playlist",
     "humanize_scope",
+    "standardize_scope",
     "FakePlaylist",
 ]
 
-FakePlaylist = namedtuple("Playlist", "author")
+FakePlaylist = namedtuple("Playlist", "author scope")
 
 _ = Translator("Audio", __file__)
 
@@ -115,13 +116,16 @@ class Playlist:
         name: str,
         playlist_url: Optional[str] = None,
         tracks: Optional[List[dict]] = None,
-        guild: Optional[discord.Guild] = None,
+        guild: Union[discord.Guild, int, None] = None,
     ):
         self.bot = bot
         self.guild = guild
         self.scope = standardize_scope(scope)
         self.config_scope = _prepare_config_scope(self.scope, author, guild)
         self.author = author
+        self.guild_id = (
+            getattr(guild, "id", guild) if self.scope == PlaylistScope.GLOBAL.value else None
+        )
         self.id = playlist_id
         self.name = name
         self.url = playlist_url
@@ -155,6 +159,7 @@ class Playlist:
         data = dict(
             id=self.id,
             author=self.author,
+            guild=self.guild_id,
             name=self.name,
             playlist_url=self.url,
             tracks=self.tracks,
@@ -192,7 +197,7 @@ class Playlist:
         `MissingAuthor`
             Trying to access the User scope without an user id.
         """
-        guild = kwargs.get("guild")
+        guild = data.get("guild") or kwargs.get("guild")
         author = data.get("author")
         playlist_id = data.get("id") or playlist_number
         name = data.get("name", "Unnamed")
@@ -395,7 +400,6 @@ async def delete_playlist(
     scope: str,
     playlist_id: Union[str, int],
     guild: discord.Guild,
-    int=None,
     author: Union[discord.abc.User, int] = None,
 ) -> None:
     """

@@ -7,6 +7,7 @@ import discord
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.i18n import Translator
+
 from .playlists import PlaylistScope, standardize_scope
 
 _ = Translator("Audio", __file__)
@@ -18,6 +19,7 @@ __all__ = [
     "LazyGreedyConverter",
     "standardize_scope",
     "get_lazy_converter",
+    "get_playlist_converter",
 ]
 
 _config = None
@@ -474,6 +476,20 @@ def get_lazy_converter(splitter: str) -> type:
         __call__ = functools.partialmethod(type(LazyGreedyConverter).__call__, splitter)
 
     class ValidatedConverter(LazyGreedyConverter, metaclass=PartialMeta):
+        pass
+
+    return ValidatedConverter
+
+
+def get_playlist_converter() -> type:
+    """
+    Returns a typechecking safe `PlaylistConverter` suitable for use with discord.py.
+    """
+
+    class PartialMeta(type(PlaylistConverter)):
+        __call__ = functools.partialmethod(type(PlaylistConverter).__call__)
+
+    class ValidatedConverter(PlaylistConverter, metaclass=PartialMeta):
         pass
 
     return ValidatedConverter

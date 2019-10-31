@@ -10,13 +10,13 @@ from redbot.core import Config
 from redbot.core.bot import Red
 from redbot.core.i18n import Translator
 
-_config = None
-_bot = None
-_localtrack_folder = None
+_config: Optional[Config] = None
+_bot: Optional[Red] = None
+_localtrack_folder: Optional[str] = None
 _ = Translator("Audio", __file__)
 _remove_start = re.compile(r"^(sc|list) ")
-_re_youtube_timestam = re.compile(r"&t=(\d+)s?")
-_re_yotube_index = re.compile(r"&index=(\d+)")
+_re_youtube_timestamp = re.compile(r"&t=(\d+)s?")
+_re_youtube_index = re.compile(r"&index=(\d+)")
 _re_spotify_url = re.compile(r"(http[s]?://)?(open.spotify.com)/")
 _re_spotify_timestamp = re.compile(r"#(\d+):(\d+)")
 _re_soundcloud_timestamp = re.compile(r"#t=(\d+):(\d+)s?")
@@ -276,7 +276,7 @@ class Query:
         return str(self.lavalink_query)
 
     @classmethod
-    def process_input(cls, query: Union[LocalPath, lavalink.Track, str], **kwargs):
+    def process_input(cls, query: Union[LocalPath, lavalink.Track, "Query", str], **kwargs):
         """
         A replacement for :code:`lavalink.Player.load_tracks`.
         This will try to get a valid cached entry first if not found or if in valid
@@ -374,21 +374,21 @@ class Query:
                         returning["youtube"] = True
                         _has_index = "&index=" in track
                         if "&t=" in track:
-                            match = re.search(_re_youtube_timestam, track)
+                            match = re.search(_re_youtube_timestamp, track)
                             if match:
                                 returning["start_time"] = int(match.group(1))
                         if _has_index:
-                            match = re.search(_re_yotube_index, track)
+                            match = re.search(_re_youtube_index, track)
                             if match:
                                 returning["track_index"] = int(match.group(1)) - 1
-                        if any(k in track for k in ["playlist?", "&list="]):
-                            if all(x in track in track for x in ["&start_radio=", "watch?"]):
-                                returning["track_index"] = 0
-                                returning["playlist"] = True
-                                returning["single"] = False
-                            else:
-                                returning["playlist"] = True if not _has_index else False
-                                returning["single"] = True if _has_index else False
+
+                        if all(k in track for k in ["&list=", "watch?"]):
+                            returning["track_index"] = 0
+                            returning["playlist"] = True
+                            returning["single"] = False
+                        elif all(x in track for x in ["playlist?"]):
+                            returning["playlist"] = True if not _has_index else False
+                            returning["single"] = True if _has_index else False
                         else:
                             returning["single"] = True
                     elif url_domain == "spotify.com":
