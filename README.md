@@ -26,8 +26,8 @@
   </a>
 </p>
 <p align="center">
-  <a href="https://travis-ci.com/Cog-Creators/Red-DiscordBot">
-    <img src="https://api.travis-ci.com/Cog-Creators/Red-DiscordBot.svg?branch=V3/develop" alt="Travis CI">
+  <a href="https://github.com/Cog-Creators/Red-DiscordBot/actions">
+    <img src="https://github.com/Cog-Creators/Red-DiscordBot/workflows/Tests/badge.svg" alt="GitHub Actions">
   </a>
   <a href="http://red-discordbot.readthedocs.io/en/stable/?badge=stable">
     <img src="https://readthedocs.org/projects/red-discordbot/badge/?version=stable" alt="Red on readthedocs.org">
@@ -126,3 +126,6 @@ Red is named after the main character of "Transistor", a video game by
 
 Artwork created by [Sinlaire](https://sinlaire.deviantart.com/) on Deviant Art for the Red Discord
 Bot Project.
+
+This project vendors [discord.ext.menus](https://github.com/Rapptz/discord-ext-menus) package made by Danny Y. (Rapptz) which is distributed under MIT License.
+Copy of this license can be found in [discord-ext-menus.LICENSE](redbot/vendored/discord-ext-menus.LICENSE) file in [redbot/vendored](redbot/vendored) folder of this repository.

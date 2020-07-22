@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, Union
 import appdirs
 import click
 
+from redbot.core.cli import confirm
 from redbot.core.utils._internal_utils import safe_delete, create_backup as red_create_backup
 from redbot.core import config, data_manager, drivers
 from redbot.core.drivers import BackendType, IdentifierData
@@ -108,12 +109,9 @@ def get_storage_type():
     storage = None
     while storage is None:
         print()
-        print("Please choose your storage backend (if you're unsure, choose 1).")
+        print("Please choose your storage backend (if you're unsure, just choose 1).")
         print("1. JSON (file storage, requires no database).")
-        print(
-            "2. PostgreSQL (Requires a database server)"
-            "\n(Warning: You cannot convert postgres instances to other backends yet)"
-        )
+        print("2. PostgreSQL (Requires a database server)")
         storage = input("> ")
         try:
             storage = int(storage)
@@ -131,16 +129,23 @@ def get_name() -> str:
         print(
             "Please enter a name for your instance,"
             " it will be used to run your bot from here on out.\n"
-            "This name is case-sensitive and can only include characters"
-            " A-z, numbers, underscores, and hyphens."
+            "This name is case-sensitive and should only include characters"
+            " A-z, numbers, underscores (_) and periods (.)."
         )
         name = input("> ")
-        if re.fullmatch(r"[a-zA-Z0-9_\-]*", name) is None:
+        if re.fullmatch(r"[A-Za-z0-9_\.\-]*", name) is None:
             print(
-                "ERROR: Instance name can only include"
-                " characters A-z, numbers, underscores, and hyphens!"
+                "ERROR: Instance names can only include characters A-z, numbers, "
+                "underscores (_) and periods (.)."
             )
             name = ""
+        elif "-" in name and not confirm(
+            "Hyphens (-) in instance names may cause issues. Are you sure you want to continue with this instance name?",
+            default=False,
+        ):
+            name = ""
+
+        print()  # new line for aesthetics
     return name
 
 
@@ -181,7 +186,9 @@ def basic_setup():
     print()
     print(
         "Your basic configuration has been saved. Please run `redbot <name>` to"
-        " continue your setup process and to run the bot."
+        " continue your setup process and to run the bot.\n\n"
+        "First time? Read the quickstart guide:\n"
+        "https://docs.discord.red/en/stable/getting_started.html"
     )
 
 
@@ -314,7 +321,7 @@ def cli(ctx, debug):
 
 
 @cli.command()
-@click.argument("instance", type=click.Choice(instance_list))
+@click.argument("instance", type=click.Choice(instance_list), metavar="<INSTANCE_NAME>")
 @click.option(
     "--no-prompt",
     "interactive",
@@ -371,8 +378,7 @@ def delete(
     remove_datapath: Optional[bool],
 ):
     """Removes an instance."""
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(
+    asyncio.run(
         remove_instance(
             instance, interactive, delete_data, _create_backup, drop_db, remove_datapath
         )
@@ -380,8 +386,8 @@ def delete(
 
 
 @cli.command()
-@click.argument("instance", type=click.Choice(instance_list))
-@click.argument("backend", type=click.Choice(["json"]))  # TODO: GH-3115
+@click.argument("instance", type=click.Choice(instance_list), metavar="<INSTANCE_NAME>")
+@click.argument("backend", type=click.Choice(["json", "postgres"]))
 def convert(instance, backend):
     """Convert data backend of an instance."""
     current_backend = get_current_backend(instance)
@@ -391,14 +397,10 @@ def convert(instance, backend):
     default_dirs = deepcopy(data_manager.basic_config_default)
     default_dirs["DATA_PATH"] = str(Path(instance_data[instance]["DATA_PATH"]))
 
-    loop = asyncio.get_event_loop()
-
     if current_backend == BackendType.MONGOV1:
         raise RuntimeError("Please see the 3.2 release notes for upgrading a bot using mongo.")
-    elif current_backend == BackendType.POSTGRES:  # TODO: GH-3115
-        raise RuntimeError("Converting away from postgres isn't currently supported")
     else:
-        new_storage_details = loop.run_until_complete(do_migration(current_backend, target))
+        new_storage_details = asyncio.run(do_migration(current_backend, target))
 
     if new_storage_details is not None:
         default_dirs["STORAGE_TYPE"] = target.value
@@ -412,7 +414,7 @@ def convert(instance, backend):
 
 
 @cli.command()
-@click.argument("instance", type=click.Choice(instance_list))
+@click.argument("instance", type=click.Choice(instance_list), metavar="<INSTANCE_NAME>")
 @click.argument(
     "destination_folder",
     type=click.Path(
@@ -422,8 +424,7 @@ def convert(instance, backend):
 )
 def backup(instance: str, destination_folder: Union[str, Path]) -> None:
     """Backup instance's data."""
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(create_backup(instance, Path(destination_folder)))
+    asyncio.run(create_backup(instance, Path(destination_folder)))
 
 
 def run_cli():
